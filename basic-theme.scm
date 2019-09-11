@@ -16,36 +16,43 @@
      (link (@ (rel "stylesheet") (href "/assets/styles.css"))))
     (body
      (div (@ (class "header"))
-	  (h1 (a (@ (href ,(site-domain site))) ,(site-title site))))
+          (h1 (@ (class "site-title"))
+              (a (@ (href ,(site-domain site))) ,(site-title site))))
      (div (@ (class "container"))
-	  ,@tree))))
+          ,@tree))))
 
 (define (post-template post)
-  `((h2 ,(post-ref post 'title))
-    (p (@ (class "date")) ,(format-date (post-date post)))
+  `((div (@ (class "page-title"))
+         (h2 ,(post-ref post 'title))
+         (time ,(format-date (post-date post))))
     ,@(post-sxml post)))
 
 (define (make-post-entry site post prefix)
   (let* ((domain (site-domain site))
-	 (filename (format #f "~a.html" (post-slug post)))
-	 (href (if prefix
-		   (format #f "~a/~a/~a" domain prefix filename)
-		   (format #f "~a/~a" domain filename))))
-    `(li ((p (a (@ (href ,href)) ,(post-ref post 'title)) " - "
-	     (span (@ (class "date")) ,(format-date (post-date post))))
-	  (p ,(post-ref post 'summary))))))
+         (filename (format #f "~a.html" (post-slug post)))
+         (href (if prefix
+                   (format #f "~a/~a/~a" domain prefix filename)
+                   (format #f "~a/~a" domain filename))))
+    `(li (@ (class "toc-item"))
+         (a (@ (href ,href)),(post-ref post 'title))
+         (time (@ (class "date"))
+               ,(format-date (post-date post)))
+         (p (@ (class "summary"))
+            ,(post-ref post 'summary)))))
 
 (define (make-link-list site posts prefix)
   (let ((f (lambda (post prev)
-	     (cons (make-post-entry site post prefix) prev))))
-    `(ul ,@(fold-right f '() posts))))
+             (cons (make-post-entry site post prefix) prev))))
+    `(ul (@ (class "toc-items"))
+         ,@(fold-right f '() posts))))
 
 (define (collection-template site title posts prefix)
-  `((h2 ,title)
+  `((div (@ (class "page-title"))
+         (h2 ,title))
     ,(make-link-list site posts prefix))
   )
 
 (define basic-theme (theme #:name "Basic theme"
-			   #:layout layout
-			   #:post-template post-template
-			   #:collection-template collection-template))
+                           #:layout layout
+                           #:post-template post-template
+                           #:collection-template collection-template))

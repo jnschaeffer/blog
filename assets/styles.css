@@ -1,3 +1,33 @@
-.container .date {
+.site-title {
+    margin-bottom: 0;
+}
+
+.container {
+    width: 900px;
+}
+
+.page-title h2 {
+    margin-top: .5em;
+    margin-bottom: 0em;
+}
+
+.page-title time {
+    margin-top: 0;
     font-style: oblique;
+}
+
+.toc-items {
+    padding-left: 0;
+    list-style-type: none;
+}
+
+.toc-item .date {
+    font-size: .9em;
+    font-style: oblique;
+    padding-left: .4em;
+}
+
+.toc-item .summary {
+    margin-top: 0;
+    margin-left: 2em;
 }
