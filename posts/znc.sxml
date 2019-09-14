@@ -1,0 +1,285 @@
+(use-modules (haunt utils))
+
+(define post
+  `((p
+     "Historically, I've set up my side projects and home-grown infrastructure the way many people do: as a
+small collection of cobbled-together servers running a combination of screen sessions, system
+services, and config files with changes I made once years ago and promptly forgot about. This works
+for the most part, at least until something breaks or reboots unexpectedly. More recently,
+I've been moving my personal projects to a Kubernetes cluster that I run, starting with projects that
+have suffered the most from poor reliability (including a Minecraft server running inside a tmux
+session). The latest success - or victim, depending on your point of view - of this effort has been
+my ZNC bouncer.")
+    (h2 (@ (id "container")) (a (@ (href "#container")) "Stuffing ZNC into a container"))
+    (p
+     "Much like IRC, and much like Kubernetes, ZNC is in many ways a defining project of its respective
+era in software. There is no nice RPC endpoint (full of vulnerabilities) or human-readable line-based
+protocol (with no defined specification for sending non-ASCII messages). ZNC modules must be "
+     (a (@ (href "https://wiki.znc.in/Compiling_modules")) "built against the entire source tree")
+     " and directly dropped into a special directory. If you fail to do this correctly, "
+     (a (@ (href "https://wiki.znc.in/Writing_modules")) "it will crash")
+     ". It comes with a web interface, but one that listens on the same port as the bouncer itself and
+is often inaccessible from web browsers because accessing HTTP on non-standard ports is considered
+unsafe and thus disallowed. For all of its idiosyncracies, though, I actually like ZNC: it works,
+doesn't chew up resources, and largely does what it's designed to do without getting in my way.")
+    (p
+     "The good news when setting up a container is that the maintainers have already put in the effort to
+make a "
+     (a (@ (href "https://hub.docker.com/_/znc/")) "Docker image")
+     " for ZNC, sparing users the pain of at least building the bouncer. It's not great - the official
+documentation recommends creating a configuration for ZNC by running a container once with a
+special "
+     (code "--makeconf")
+     " option to write a configuration to a volume on the host machine, then using that to run ZNC -
+but it does work once it's running. If you have an existing configuration, like I did, you can
+mount it at "
+     (code "/znc-data")
+     " and things will probably be fine. I would recommend against loading your actual configuration 
+before everything is ready, or else you'll risk spamming others with connections and
+disconnections while things get set up (as I did).")
+    (h2 (@ (id "volume")) (a (@ (href "#volume")) "Getting configs into a volume"))
+    (p
+     "Ironically, one of the harder parts of this entire task was getting my actual ZNC configuration
+onto my cluster. Kubernetes is designed to favor stateless applications, and where state does
+exist it favors that state being kept within the cluster. Getting data from outside of the
+cluster and putting it in a cluster is a little more challenging.")
+    (p
+     "To start, you'll want to create a PersistentVolumeClaim object in which your ZNC data will be
+stored. If you're using Linode to host your cluster, like I am, a PersistentVolumeClaim"
+     " of the storage class "
+     (code "linode-block-storage")
+     " should suffice for hosting your ZNC data. The "
+     (a (@ (href "https://github.com/linode/linode-blockstorage-csi-driver")) "Linode Block Storage CSI driver")
+     " will always fulfill PersistentVolume requests with a volume at least 10Gi in size; whether or not
+that is an issue is for you to decide.")
+    (h3 (@ (id "pvc-config")) (a (@ (href "#pvc-config")) "ZNC PersistentVolumeClaim manifest"))
+    (pre "apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: znc-data
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+  storageClassName: linode-block-storage")
+    (p
+     "Once you have a volume to put your ZNC configs into, you'll need to find a way to get them into the volume.
+I took a particularly bad approach to this, using an existing container I had sitting around, attaching my ZNC
+config "
+     (code "PersistentVolumeClaim")
+     " to it, and running "
+     (a (@ (href "https://kubernetes.io/docs/reference/generated/kubectl/kubectl-commands#cp"))
+	(code "kubectl cp"))
+     " to get my ZNC configs into the new volume. It's an ugly approach, and one I wouldn't recommend, so
+I'm not going to endorse it by including a YAML manifest here. The main reason it's necessary is that ZNC
+will not start without a valid configuration, so the volume needs to be populated ahead of time.")
+    (h2 (@ (id "deployment-service"))
+	(a (@ (href "#deployment-service"))
+	   "Setting up the Deployment and Service manifests"))
+    (p
+     "Defining the Deployment and Service manifests for ZNC is fairly straightforward. Assuming you 
+defined a PersistentVolumeClaim
+with the name "
+     (code "znc-data")
+     " like above and have ZNC listening on port 7000, your manifests will look something like the
+examples below. These manifests will deploy a single pod containing a ZNC container with your
+configuration volume mounted at "
+     (code "/znc-data")
+     " and a service of type "
+     (code "ClusterIP")
+     " listening on port 7000. You can also use a "
+     (code "NodePort")
+     " or "
+     (code "LoadBalancer")
+     " service, but I specifically wanted to route all traffic through an Ingress controller with TCP 
+passthrough. (This is also the motivation for including the "
+     (code "certs")
+     " volume and "
+     (code "my-domain-tls")
+     " secret, which will be explained in later sections.)"
+     )
+    (h3 (@ (id "deployment-manifest")) (a (@ (href "#deployment-manifest")) "ZNC Deployment manifest"))
+    (pre "apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: znc
+  labels:
+    app: znc
+spec:
+  selector:
+    matchLabels:
+      app: znc
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: znc
+    spec:
+      containers:
+      - name: znc
+        image: znc:1.7.4
+        volumeMounts:
+        - mountPath: \"/znc-data\"
+          name: znc-data
+        - mountPath: \"/certs\"
+          name: certs
+        ports:
+        - containerPort: 7000
+      volumes:
+      - name: znc-data
+        persistentVolumeClaim:
+          claimName: znc-data
+      - name: certs
+        secret:
+          secretName: my-domain-tls")
+    (h3 (@ (id "service-manifest")) (a (@ (href "#service-manifest")) "ZNC Service manifest"))
+    (pre "apiVersion: v1
+kind: Service
+metadata:
+  name: znc
+  labels:
+    app: znc
+spec:
+  ports:
+  - protocol: TCP
+    port: 7000
+    targetPort: 7000
+  selector:
+     app: znc
+  type: ClusterIP")
+    (h2 (@ (id "ingress")) (a (@ (href "#ingress")) "Using ZNC with an Ingress controller"))
+    (p
+     "If you're like me, being able to pass your ZNC traffic directly through an "
+     (a (@ (href "https://kubernetes.io/docs/concepts/services-networking/ingress/")) "Ingress")
+     " controller is pretty appealing for a number of reasons: more services interact with the 
+internet through a single entry point, DNS is easier to manage, and with "
+     (a (@ (href "https://docs.cert-manager.io/en/latest/")) "cert-manager")
+     " it's easy to provision TLS certificates for your services (including ZNC). Unfortunately,
+Ingress objects are limited to serving HTTP and HTTPS traffic, with support for TCP passthrough 
+varying by Ingress controller vendor.")
+    (p "In my case, I'm using the "
+       (a (@ (href "https://github.com/nginxinc/kubernetes-ingress/")) "NGINX Ingress controller")
+       " from NGINX, Inc. (This is not the same as the NGINX Ingress controller maintained by the
+Kubernetes team; you can find the main differences between the two "
+       (a (@ (href "https://github.com/nginxinc/kubernetes-ingress/blob/master/docs/nginx-ingress-controllers.md"))
+	  "here")
+       ".) The documentation around this feature is "
+       (a (@ (href "https://github.com/nginxinc/kubernetes-ingress/tree/master/examples/tcp-udp")) "fairly limited")
+       ", but the general idea is that you set the value of the "
+       (code "stream-snippets")
+       " Ingress controller ConfigMap key to pass all traffic on your ZNC port directly through to your 
+ZNC service. I use "
+       (a (@ (href "https://helm.sh/")) "Helm")
+       " to deploy my NGINX Ingress controller. If you do as well, modifying the "
+       (code "controller.config.entries")
+       " entry in "
+       (a (@ (href "https://github.com/nginxinc/kubernetes-ingress/tree/master/deployments/helm-chart/values.yaml#L40")) (code  "values.yaml"))
+       " to contain a "
+       (code "stream-snippets")
+       " key like the example below should suffice.")
+    (h3 (@ (id "stream-snippets")) (a (@ (href "#stream-snippets"))
+				      "NGINX Ingress controller "
+				      (code "stream-snippets")
+				      " entry"))
+    (pre "stream-snippets: |
+  upstream znc-tcp {
+      server znc.default.svc.cluster.local:7000;
+  }
+  server {
+      listen 7000;
+      proxy_pass znc-tcp;
+  }")
+    (p "This will pass all traffic on port 7000 on the Ingress controller to the "
+       (code "znc")
+       " service in the "
+       (code "default")
+       " namespace listening on port 7000. The two port values do not need to be the same; what matters is
+that the port defined in the "
+       (code "upstream")
+       " block matches the port defined in your ZNC Service object.")
+    (h2 (@ (id "certs")) (a (@ (href "#certs")) "Provisioning TLS certificates for ZNC with cert-manager"))
+    (p
+     "Prior to ZNC 1.7.0, TLS certificates in ZNC needed to be stored in a single file that included the
+private key, certificate, and any intermediate certificates between the server certificate and root
+certificate. That is no longer the case, which allows for compatibility with services that provide the
+TLS certificate and private key separately. Using cert-manager, we can automatically provision certificates
+for ZNC. Doing so requires setting up an Ingress on the domain you want to serve ZNC on with an
+appropriate backend, which depending on your setup could be anything from a landing page to the ZNC
+web admin interface. (For what it's worth, the NGINX Ingress controller doesn't support TLS passthrough,
+so if you want the latter with that controller you're out of luck. Just connect on the ZNC port
+directly instead, or do what I do and disable it entirely.)")
+    (p
+     "To start off, you'll need to have already installed cert-manager and configured an appropriate
+Issuer. The instructions for setting up a Let's Encrypt Issuer "
+     (a (@ (href "https://docs.cert-manager.io/en/latest/tutorials/acme/quick-start/index.html#step-6-configure-let-s-encrypt-issuer"))
+	"here")
+     " are good and should get you most of the way there. Assuming you have an Issuer set up with the name "
+     (code "letsencrypt-prod")
+     ", all you should need to do is define an Ingress object that looks like the following example.
+If routing HTTP traffic to your ZNC service doesn't appeal to you, feel free to route it somewhere else.")
+    (h3 (@ (id "ingress-manifest")) (a (@ (href "#ingress-manifest")) "ZNC Ingress manifest"))
+    (pre "apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+  annotations:
+    certmanager.k8s.io/issuer: letsencrypt-prod
+  name: znc-ingress
+spec:
+  tls:
+  - hosts:
+    - znc.my.domain
+    secretName: my-domain-tls
+  rules:
+  - host: znc.my.domain
+    http:
+      paths:
+      - backend:
+          serviceName: znc
+          servicePort: 7000
+        path: /")
+    (p
+     "This will define an Ingress listening on "
+     (code "znc.my.domain")
+     " which will populate a secret "
+     (code "my-domain-tls")
+     " with valid TLS certificates for your ZNC subdomain. You could also set up a ClusterIssuer or
+define an Issuer/ClusterIssuer using DNS validation, but in my case this just happened to be easier.")
+    (p
+     "This Ingress is what populates the "
+     (code "my-domain-tls")
+     " secret referenced in the "
+     (code "certs")
+     " volume mounted in the ZNC Deployment example above. If everything is working, the "
+     (code "my-domain-tls")
+     " secret will contain two values: "
+     (code "tls.crt")
+     " containing the TLS certificate and "
+     (code "tls.key")
+     " containing the private key. You will need to modify your ZNC config file at "
+     (code "/znc-data/configs/znc.conf")
+     " to point to these files to have functioning TLS connections on your ZNC instance.")
+    (h3 (@ (id "znc-config-tls")) (a (@ (href "#znc-config-tls")) "ZNC config file TLS entries"))
+    (pre "SSLCertFile = /certs/tls.crt
+SSLKeyFile = /certs/tls.key")
+    (p "Once this is done, you should be able to more securely connect to your IRC networks of choice.
+I have had some issues getting certificates to work across multiple domains using the same secret with
+cert-manager and Ingress annotations; setting a different TLS certificate secret per subdomain may be
+smarter.")
+    (h2 (@ (id "lessons")) (a (@ (href "#lessons")) "Lessons learned"))
+    (p "All told, getting ZNC set up in Kubernetes was a challenge, but more because of my own lack
+of knowledge than any particular issues with Kubernetes or associated tooling. Once everything was set
+up it was obvious how the various parts fit together, and in the future it should be quite a bit easier
+to repeat this process with a similar service in the future.")
+    (p "If you choose to deploy ZNC on a Kubernetes cluster, I would recommend making sure you
+understand the particulars of how cert-manager and your Ingress controller work, as well as how they
+interact with your cloud provider. Making sure everything works could require several attempts if this
+is your first time deploying such a service, and the documentation can be dense.")
+    (p "And last but not least: do all of your testing with a dummy configuration. No one wants to see
+dozens of disconnect messages while you try to decide what you want the name of your app label to be.")))
+
+`((title . "Deploying ZNC in Kubernetes")
+  (date . ,(string->date* "2019-09-14 00:00"))
+  (summary . "How to make a ZNC bouncer work if you cannot.")
+  (content ,post))
