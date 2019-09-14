@@ -35,6 +35,7 @@
                    (format #f "~a/~a" domain filename))))
     `(li (@ (class "toc-item"))
          (a (@ (href ,href)),(post-ref post 'title))
+	 " "
          (time (@ (class "date"))
                ,(format-date (post-date post)))
          (p (@ (class "summary"))
