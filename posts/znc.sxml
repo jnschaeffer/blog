@@ -12,7 +12,7 @@ session). The latest success - or victim, depending on your point of view - of t
 my ZNC bouncer.")
     (h2 (@ (id "container")) (a (@ (href "#container")) "Stuffing ZNC into a container"))
     (p
-     "Much like IRC, and much like Kubernetes, ZNC is in many ways a defining project of its respective
+     "Much like IRC, and much like Kubernetes, ZNC is a defining project of its respective
 era in software. There is no nice RPC endpoint (full of vulnerabilities) or human-readable line-based
 protocol (with no defined specification for sending non-ASCII messages). ZNC modules must be "
      (a (@ (href "https://wiki.znc.in/Compiling_modules")) "built against the entire source tree")
@@ -36,7 +36,7 @@ mount it at "
      (code "/znc-data")
      " and things will probably be fine. I would recommend against loading your actual configuration 
 before everything is ready, or else you'll risk spamming others with connections and
-disconnections while things get set up (as I did).")
+disconnections while things get set up.")
     (h2 (@ (id "volume")) (a (@ (href "#volume")) "Getting configs into a volume"))
     (p
      "Ironically, one of the harder parts of this entire task was getting my actual ZNC configuration
@@ -281,5 +281,5 @@ dozens of disconnect messages while you try to decide what you want the name of 
 
 `((title . "Deploying ZNC in Kubernetes")
   (date . ,(string->date* "2019-09-14 00:00"))
-  (summary . "How to make a ZNC bouncer work if you cannot.")
+  (summary . "How to make a ZNC deployment work if you cannot.")
   (content ,post))
