@@ -8,7 +8,7 @@
 	     (haunt site))
 
 (site #:title "blog.experimental.systems"
-      #:domain "http://localhost:8080"
+      #:domain "https://blog.experimental.systems"
       #:default-metadata
       '((author . "John Schaeffer")
 	(email . "john@schaeffer.io"))
