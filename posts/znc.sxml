@@ -1,4 +1,4 @@
-(use-modules (haunt utils))
+(use-modules (srfi srfi-19))
 
 (define post
   `((p
@@ -280,6 +280,6 @@ is your first time deploying such a service, and the documentation can be dense.
 dozens of disconnect messages while you try to decide what you want the name of your app label to be.")))
 
 `((title . "Deploying ZNC in Kubernetes")
-  (date . ,(string->date* "2019-09-14 00:00"))
+  (date . ,(string->date "2019-09-14" "~Y-~m-~d"))
   (summary . "How to make a ZNC deployment work if you cannot.")
   (content ,post))
