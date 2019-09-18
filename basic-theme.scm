@@ -12,6 +12,7 @@
 (define (layout site title tree)
   `(html
     (head
+     (meta (@ (charset "UTF-8")))
      (title ,(format #f "~a - ~a" title (site-title site)))
      (link (@ (rel "stylesheet") (href "/assets/styles.css"))))
     (body
